@@ -1,11 +1,11 @@
-# Example prediction code for Python for the PhysioNet/CinC Challenge 2019
+# Bo Wang Lab submission for the PhysioNet/CinC Challenge 2019
 
 ## Contents
 
 This prediction code uses two scripts:
 
 * `get_sepsis_score.py` makes predictions on clinical time-series data.  Add your prediction code to the `get_sepsis_score` function.  To reduce your code's run time, add any code to the `load_sepsis_model` function that you only need to run once, such as loading weights for your model.
-* `driver.py` calls `load_sepsis_model` once and `get_sepsis_score` many times. It also performs all file input and output.  **Do not** edit this script -- or we will be unable to evaluate your submission.
+* `driver.py` calls `load_sepsis_model` and `get_sepsis_score` and performs all file input and output.  **Do not** edit this script -- provided by PhysioNet
 
 Check the code in these files for the input and output formats for the `load_sepsis_model` and `get_sepsis_score` functions.
 

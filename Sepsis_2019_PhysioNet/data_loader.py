@@ -53,17 +53,18 @@ def load_data(input_directory, limit=100, split=True):
 def data_process(dataset, expand_dims=False):
     '''
     preprocessing - expand dims to match largest entry
-    output is shape [n, 40, max] np array
+    output is shape [n, time_steps, 40] np array
     each row is an hours worth of data
     TODO: edit labels to match utility funciton
           currently: 1 if past t_sepsis - 6, 0 otherwise
     '''
     n = len(dataset) # number of patients
     max_len = 0
-    for pt in dataset: #get max_len and remove NaN
+    for i,pt in enumerate(dataset): #get max_len and remove NaN
         if pt.shape[1] > max_len:
             max_len = pt.shape[1]
         np.nan_to_num(pt, copy=False) #replaces NaN with zeros
+        dataset[i] = pt.T
 
     if not expand_dims:
         return dataset
@@ -89,14 +90,15 @@ def save_to_file(name, data, labels):
 def load_from_file(name):
     data = np.load(name + '_data.npy')
     labels = np.load(name + '_labels.npy')
-    print('Loaded data of shape:', data.shape)
-    print('Loaded labels of shape:', labels.shape)
+    print('\nLoaded data of shape:', data.shape)
+    print('Loaded labels of shape:', labels.shape, '\n')
     return data, labels
 
 ''' Load with no resizing example '''
-#train_data, train_labels = load_data(train_dir, limit=5, split=True)
-#train_data = data_process(train_data, expand_dims=False)
+#train_data, train_labels = load_data(train_dir, limit=500, split=True)
+#train_data = data_process(train_data, expand_dims=False) # only tuns NaNs to zeros
+#save_to_file('small_train', train_data, train_labels)
 
 '''Load with resizing example'''
-#train_data, _= load_data(train_dir, limit=50, split=False)
+#train_data, _= load_data(train_dir, limit=500, split=False)
 #train_data, train_labels = data_process(train_data, expand_dims=True)

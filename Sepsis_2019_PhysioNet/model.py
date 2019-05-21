@@ -2,6 +2,7 @@
 
 import numpy as np
 import os, sys
+import time
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -26,6 +27,16 @@ class lstm(nn.Module):
         self.inp = nn.Linear(40, embedding) # input embedding - can be changed, potentially to small TCN
         self.rnn = nn.LSTM(embedding, hidden_size, num_layers=2) # RNN structure
         self.out = nn.Linear(hidden_size, 1) # output linear
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d): #not used yet
+                nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, nn.BatchNorm2d): #not used yet either
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.constant_(m.bias, 0)
+
         
     def step(self, time_step, hidden_state=None):
         time_step = self.inp(time_step.view(1, -1).unsqueeze(1)) 
@@ -42,19 +53,18 @@ class lstm(nn.Module):
             outputs[i] = output
         return outputs, hidden_state #TODO:is hidden_state necessary?
 
-
 train_data, train_labels = load_from_file('small_train')
+#train_data, train_labels = load_from_file('D:\Sepsis Challenge\setA')
+
 sepsis = 0
 total = 0
 for pt in train_labels:
     sepsis += np.count_nonzero(pt)
     total += len(pt)
-print('total', total)
-print('sepsis', sepsis)
-exit()
-# small_train: 500 training patients
-#              data:   (time_steps, 40)
-#              labels: (time_setps, )
+if True:
+    print('total data points: ', total)
+    print('sepsis data points:', sepsis)
+
 # TODO: use gp to replace zeros with predictions
 # TODO: make train.py and leave only model here
 n = len(train_data)
@@ -65,13 +75,15 @@ hidden_size = 20
 
 torch.set_default_tensor_type('torch.DoubleTensor')
 model = lstm(embedding, hidden_size)
-criterion = nn.MSELoss()
-optimizer = optim.SGD(model.parameters(), lr=0.01)
+# weighted BCE loss with sepsis weight = total/sepsis
+criterion = nn.BCEWithLogitsLoss(pos_weight=torch.DoubleTensor([total/sepsis]))
+optimizer = optim.SGD(model.parameters(), lr=0.001)
 
 losses = np.zeros(epochs)
 
 # TODO: can batching be done with variable length inputs?
 #       maybe batch by equal length time_steps?
+start = time.time()
 for epoch in range(epochs):
     loss = 0
     for i in range(n):
@@ -81,7 +93,7 @@ for epoch in range(epochs):
         targets = Variable(torch.from_numpy(train_labels[i])).view(-1,1,1)
 
         optimizer.zero_grad()
-        outputs, hidden_state = model(inputs, None) #TODO:is hidden_state necessary?
+        outputs, hidden_state = model(inputs, None)
         loss = criterion(outputs, targets)
         loss.backward()
         optimizer.step()
@@ -89,10 +101,12 @@ for epoch in range(epochs):
         losses[epoch] += loss.data
 
     losses[epoch] = losses[epoch]/n
-    print('Epoch', epoch, 'loss:',float(loss.data))
+    print('Epoch', epoch, 'loss:',losses[epoch])
+    print('total runtime:', str(round(time.time() - start, 2)))
 
 plt.plot(losses)
 plt.show()
+
 def get_sepsis_score(data, model):
     x_mean = np.array([
         83.8996, 97.0520,  36.8055,  126.2240, 86.2907,

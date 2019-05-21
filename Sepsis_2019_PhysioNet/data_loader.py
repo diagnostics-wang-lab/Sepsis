@@ -95,9 +95,9 @@ def load_from_file(name):
     return data, labels
 
 ''' Load with no resizing example '''
-#train_data, train_labels = load_data(train_dir, limit=500, split=True)
+#train_data, train_labels = load_data(train_dir, limit=None, split=True)
 #train_data = data_process(train_data, expand_dims=False) # only tuns NaNs to zeros
-#save_to_file('small_train', train_data, train_labels)
+#save_to_file('D:\Sepsis Challenge\setA', train_data, train_labels)
 
 '''Load with resizing example'''
 #train_data, _= load_data(train_dir, limit=500, split=False)

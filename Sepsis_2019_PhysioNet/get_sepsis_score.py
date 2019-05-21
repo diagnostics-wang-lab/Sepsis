@@ -49,4 +49,10 @@ def get_sepsis_score(data, model):
     return score, label
 
 def load_sepsis_model():
+    #Model goes here
+    # to run call: python driver.py input_directory output_directory
+
+    # for testing:
+    #   save: save_challenge_predictions(file, scores, labels)
+    #   run: python driver.py input_directory output_directory
     return None

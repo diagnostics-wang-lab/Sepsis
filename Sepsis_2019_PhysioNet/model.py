@@ -8,29 +8,28 @@ import torch.nn.functional as F
 import math
 import gpytorch
 from driver import save_challenge_predictions
-# load_challenge_data(file) returns data
-# save_challenge_predictions(file, scores, labels)
 
 train_dir = "D:/Sepsis Challenge/training"
 
-def load_challenge_data(file):
+def load_challenge_data(file, split=True):
     with open(file, 'r') as f:
         header = f.readline().strip()
         column_names = header.split('|')
         data = np.loadtxt(f, delimiter='|')
-
-    # Ignore SepsisLabel column if present.
-    '''
+    
     if column_names[-1] != 'SepsisLabel':
         print(file, ' does not have sepsis label')
         return
+    elif split:
         labels = data[:, -1]
         column_names = column_names[:-1]
-        data = data[:, :-1]'''
-        
-    return data
+        data = data[:, :-1]
+    else:
+        data, labels = data, None
+    
+    return data, labels
 
-def load_data(input_directory):
+def load_data(input_directory, limit=100, split=True):
 
     # Find files.
     files = []
@@ -38,7 +37,7 @@ def load_data(input_directory):
         if os.path.isfile(os.path.join(input_directory, f)) and not f.lower().startswith('.') and f.lower().endswith('psv'):
             files.append(f)
 
-    # TODO: implement output
+    # TODO: implement output (Maybe scrap)
     #if not os.path.isdir(output_directory):
     #    os.mkdir(output_directory)
 
@@ -48,17 +47,15 @@ def load_data(input_directory):
     for f in files:
         # Load data.
         input_file = os.path.join(input_directory, f)
-        data = load_challenge_data(input_file)
+        data,labels = load_challenge_data(input_file, split)
         data_arr.append(np.transpose(data))
-        # TODO: remove this length constraint
-        if len(data_arr) == 500:
+        label_arr.append(labels)
+        if len(data_arr) == limit:
             break
 
-    return data_arr #, label_arr
+    return data_arr, label_arr
 
-train_data = load_data(train_dir) #list of np arrays w 41 vars
-
-def data_process(dataset):
+def data_process(dataset, expand_dims=False):
     '''
     preprocessing - expand dims to match largest entry
     output is shape [n, 40, max] np array
@@ -72,6 +69,9 @@ def data_process(dataset):
         if pt.shape[1] > max_len:
             max_len = pt.shape[1]
         np.nan_to_num(pt, copy=False) #replaces NaN with zeros
+
+    if not expand_dims:
+        return dataset
 
     for i, pt in enumerate(dataset): # expand dimensions to match largest input
         diff = max_len - pt.shape[1]
@@ -87,19 +87,27 @@ def data_process(dataset):
     data, labels = output[:,:-1,:], output[:,-1,:]
     return data, labels
 
-'''Save Data as .npy'''
-#train_data, train_labels = data_process(train_data) #currently (n, 40, max_time)
-#print(train_data.shape)
-#print(train_labels.shape)
-#np.save('nan0_miss1_setA_data', train_data)
-#np.save('nan0_miss1_setA_labels', train_labels)
+def save_to_file(name, data, labels):
+    np.save(name + '_data', data)
+    np.save(name + '_labels', labels)
 
-'''Load .npy Data''' #currently (500, 40, 258) and (500, 258)
-data = np.load('nan0_miss1_setA_data.npy')
-labels = np.load('nan0_miss1_setA_labels.npy')
-print(data.shape)
-print(labels.shape)
+def load_from_file(name):
+    data = np.load(name + '_data.npy')
+    labels = np.load(name + '_labels.npy')
+    print('Loaded data of shape:', data.shape)
+    print('Loaded labels of shape:', labels.shape)
+    return data, labels
 
+train_data, train_labels = load_from_file('nan0_miss1_setA')
+
+
+''' Load with no resizing example '''
+#train_data, train_labels = load_data(train_dir, limit=5, split=True)
+#train_data = data_process(train_data, expand_dims=False)
+
+'''Load with resizing example'''
+#train_data, _= load_data(train_dir, limit=50, split=False)
+#train_data, train_labels = data_process(train_data, expand_dims=True)
 
 def get_sepsis_score(data, model):
     x_mean = np.array([

@@ -29,8 +29,8 @@ else:
     args.device = torch.device('cpu')
     torch.set_default_tensor_type('torch.DoubleTensor')
 
-train_data, train_labels = load_from_file('/home/wanglab/Osvald/CinC_data/setA')
-#train_data, train_labels = load_from_file('/home/wanglab/Osvald/Sepsis/small_train')
+#train_data, train_labels = load_from_file('/home/wanglab/Osvald/CinC_data/setA')
+train_data, train_labels = load_from_file('/home/wanglab/Osvald/Sepsis/small_train')
 #train_data, train_labels = load_from_file('D:\Sepsis Challenge\setA')
 
 epochs = 10
@@ -53,8 +53,8 @@ def pt_count(labels, display=True):
 ratio, n = pt_count(train_labels)
 
 model = lstm(embedding, hidden_size, num_layers)
-#model.load_state_dict(torch.load('/home/wanglab/Osvald/Sepsis/parameters'))
-#model.eval()
+model.load_state_dict(torch.load('/home/wanglab/Osvald/Sepsis/Models/lstm40_2_64/model_epoch4_A'))
+model.eval()
 
 criterion = nn.BCEWithLogitsLoss(pos_weight=torch.DoubleTensor([ratio]).to(args.device))
 optimizer = optim.SGD(model.parameters(), lr=0.001)
@@ -66,8 +66,8 @@ start = time.time()
 for epoch in range(epochs):
     loss = 0
     for i in range(n):
-        # TODO: move outside of loop - can't just call torch.from_numpy() on entire train_data - it is type numpy.object_
-        #       might have to loop through all seperately to convert to tensor
+        # TODO: -> move outside of loop - can't just call torch.from_numpy() on entire train_data - it is type numpy.object_
+        #          might have to loop through all seperately to convert to tensor
         inputs = Variable(torch.from_numpy(train_data[i]).to(args.device))
         targets = Variable(torch.from_numpy(train_labels[i]).to(args.device)).view(-1,1,1)
 

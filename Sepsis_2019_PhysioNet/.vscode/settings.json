@@ -1,0 +1,5 @@
+{
+    "python.pythonPath": "/home/wanglab/anaconda3/envs/Osvald/bin/python",
+    "python.linting.pylintEnabled": true,
+    "python.linting.enabled": true
+}

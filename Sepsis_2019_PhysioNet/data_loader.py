@@ -4,7 +4,8 @@ import numpy as np
 import os, sys
 from driver import save_challenge_predictions
 
-train_dir = "D:/Sepsis Challenge/training"
+#train_dir = "D:/Sepsis Challenge/training"
+train_dir = '/home/wanglab/Osvald/CinC_data/training_setB'
 
 def load_challenge_data(file, split=True):
     with open(file, 'r') as f:
@@ -88,8 +89,8 @@ def save_to_file(name, data, labels):
     np.save(name + '_labels', labels)
 
 def load_from_file(name):
-    data = np.load(name + '_data.npy')
-    labels = np.load(name + '_labels.npy')
+    data = np.load(name + '_data.npy', allow_pickle=True)
+    labels = np.load(name + '_labels.npy', allow_pickle=True)
     print('\nLoaded data of shape:', data.shape)
     print('Loaded labels of shape:', labels.shape, '\n')
     return data, labels
@@ -97,8 +98,13 @@ def load_from_file(name):
 ''' Load with no resizing example '''
 #train_data, train_labels = load_data(train_dir, limit=None, split=True)
 #train_data = data_process(train_data, expand_dims=False) # only tuns NaNs to zeros
-#save_to_file('D:\Sepsis Challenge\setA', train_data, train_labels)
+#save_to_file('/home/wanglab/Osvald/CinC_data/setB', train_data, train_labels)
 
 '''Load with resizing example'''
 #train_data, _= load_data(train_dir, limit=500, split=False)
 #train_data, train_labels = data_process(train_data, expand_dims=True)
+
+'''padding'''
+train_data, train_labels = load_data(train_dir, limit=None, split=True)
+train_data = data_process(train_data, expand_dims=False) # only tuns NaNs to zeros
+lengths = [len(label) for label in train_labels]

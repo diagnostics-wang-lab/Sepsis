@@ -15,7 +15,7 @@ class lstm(nn.Module):
     input -> [40, n] physiological variable time series tensor
     output -> [n,] sepsis label tensor
     '''
-    def __init__(self, embedding, hidden_size, num_layers=5):
+    def __init__(self, embedding, hidden_size, num_layers=2):
         super(lstm, self).__init__()
         self.hidden = hidden_size
 

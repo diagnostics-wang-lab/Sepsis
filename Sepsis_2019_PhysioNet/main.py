@@ -16,21 +16,21 @@ from data_loader import load_from_file
 from driver import save_challenge_predictions
 import matplotlib.pyplot as plt
 
-#TODO: add more args, including train, etc.
+#TODO: add more args, including train, etc.print([pt.shape for pt in train_data])
 parser = argparse.ArgumentParser(description='PyTorch Example')
 parser.add_argument('--disable-cuda', action='store_true',
                     help='Disable CUDA')
 args = parser.parse_args()
 args.device = None
-if not args.disable_cuda and torch.cuda.is_available() and False: #remove false
+if not args.disable_cuda and torch.cuda.is_available():
     args.device = torch.device('cuda')
     torch.set_default_tensor_type('torch.cuda.DoubleTensor')
 else:
     args.device = torch.device('cpu')
     torch.set_default_tensor_type('torch.DoubleTensor')
 
-#train_data, train_labels = load_from_file('/home/wanglab/Osvald/CinC_data/setA')
-train_data, train_labels = load_from_file('/home/wanglab/Osvald/Sepsis/small_train')
+train_data, train_labels = load_from_file('/home/wanglab/Osvald/CinC_data/setA')
+#train_data, train_labels = load_from_file('/home/wanglab/Osvald/Sepsis/small_train')
 #train_data, train_labels = load_from_file('D:\Sepsis Challenge\setA')
 
 epochs = 10
@@ -54,7 +54,7 @@ ratio, n = pt_count(train_labels)
 
 model = lstm(embedding, hidden_size, num_layers)
 model.load_state_dict(torch.load('/home/wanglab/Osvald/Sepsis/Models/lstm40_2_64/model_epoch4_A'))
-model.eval()
+model.train()
 
 criterion = nn.BCEWithLogitsLoss(pos_weight=torch.DoubleTensor([ratio]).to(args.device))
 optimizer = optim.SGD(model.parameters(), lr=0.001)
@@ -78,11 +78,15 @@ for epoch in range(epochs):
         optimizer.step()
 
         losses[epoch] += loss.data
+        if i == 0:
+            print('beginning epoch', i)
+        if i == int(n/20):
+            print('epoch progress: ' + str(int(n/i*100)) + '%')
 
     losses[epoch] = losses[epoch]/n
     print('Epoch', epoch, 'loss:',losses[epoch])
     print('total runtime:', str(round(time.time() - start, 2)))
-    torch.save(model.state_dict(), '/home/wanglab/Osvald/Sepsis/Models/lstm40_2_64/model_epoch%s_A' % (epoch+1))
+    torch.save(model.state_dict(), '/home/wanglab/Osvald/Sepsis/Models/lstm40_2_64/model_epoch%s_A' % (epoch+1+4)) #remove +4
     np.save('/home/wanglab/Osvald/Sepsis/Models/lstm40_2_64/losses', losses)
 
 plt.plot(losses)

@@ -51,7 +51,7 @@ def load_data(input_directory, limit=100, split=True):
 
     return data_arr, label_arr
 
-def data_process(dataset, labels, expand_dims=False):
+def data_process(dataset, expand_dims=False):
     '''
     preprocessing - expand dims to match largest entry
     output is shape [n, time_steps, 40] np array
@@ -66,16 +66,14 @@ def data_process(dataset, labels, expand_dims=False):
             max_len = pt.shape[1]
         np.nan_to_num(pt, copy=False) #replaces NaN with zeros
         dataset[i] = pt.T
-    print(max_len)
+
     if not expand_dims:
         return dataset
-
-
 
     for i, pt in enumerate(dataset): # expand dimensions to match largest input
         diff = max_len - pt.shape[1]
         if diff:
-            pt = np.append(pt, np.ones((40, diff)) * -1, axis=1)
+            pt = np.append(pt, np.ones((41, diff)) * -1, axis=1)
         pt = np.expand_dims(pt, axis=0)
         #TODO: fix this very ugly workaround, here because of np flattening tendency
         if i == 0: 
@@ -107,8 +105,6 @@ def load_from_file(name):
 #train_data, train_labels = data_process(train_data, expand_dims=True)
 
 '''padding'''
-#train_data, train_labels = load_data(train_dir, limit=10, split=True)
-#print([pt.shape for pt in train_data])
-#print([label.shape for label in train_labels])
-#train_data = data_process(train_data, train_labels, expand_dims=False) # only tuns NaNs to zeros
+#train_data, train_labels = load_data(train_dir, limit=None, split=True)
+#train_data = data_process(train_data, expand_dims=False) # only tuns NaNs to zeros
 #lengths = [len(label) for label in train_labels]

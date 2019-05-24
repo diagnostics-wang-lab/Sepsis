@@ -125,7 +125,7 @@ class Dataset(data.Dataset):
 #save_to_file('/home/wanglab/Osvald/CinC_data/setB', train_data, train_labels)
 
 '''Load with resizing example''' # data shape (n, 40, max_len) labels shape (n, max_len)
-#train_data, _= load_data(train_dir, limit=10, split=False)
+#train_data, _= load_data(train_dir, limit=2000, split=False)
 #train_data = data_process(train_data, expand_dims=True)
 #print(train_data.shape)
 #print(train_labels.shape)

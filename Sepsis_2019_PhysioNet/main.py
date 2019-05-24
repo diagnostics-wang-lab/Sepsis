@@ -12,7 +12,6 @@ from torch import optim
 import math
 import gpytorch # currently unused
 from model import lstm
-from data_loader import load_from_file #remove?
 from pytorch_data_loader import Dataset
 from driver import save_challenge_predictions
 import matplotlib.pyplot as plt
@@ -38,10 +37,9 @@ else:
 #train_data, train_labels = load_from_file(r'C:\Users\Osvald\Sepsis_ML\small_train')
 #train_data, train_labels = load_from_file(r'C:\Users\Osvald\Sepsis_ML\test')
 
-#dataloader prep TODO: change to match full dataset
 partition = dict([])
-partition['train'] = list(range(8))
-partition['validation'] = list(range(6,10))
+partition['train'] = list(range(1500))
+partition['validation'] = list(range(1500,2000))
 
 epochs = 10
 embedding = 40
@@ -69,7 +67,6 @@ train_losses = np.zeros(epochs)
 val_losses = np.zeros(epochs)
 
 # TODO: Figure out batching with different sizes w/o excessive padding
-# TODO: add validation tracking
 # TODO: edit loss so that it ignores -1s
 start = time.time()
 for epoch in range(epochs):
@@ -102,6 +99,11 @@ for epoch in range(epochs):
     print('Epoch', epoch+1, 'train loss:', train_losses[epoch], 'validation loss:', val_losses[epoch])
     print('total runtime:', str(round(time.time() - start, 2)))
 
+    np.save('C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/', train_losses)
+    np.save('C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/', val_losses)
+    if (epoch+1) % save_rate ==0:
+       torch.save(model.state_dict(), 'C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/model_epoch%s' % (epoch+1))
+        
     #np.save('/home/wanglab/Osvald/Sepsis/Models/lstm40_2_64/losses', losses)
     #if (epoch+1) % save_rate ==0:
     #   torch.save(model.state_dict(), '/home/wanglab/Osvald/Sepsis/Models/lstm40_2_64/model_epoch%s_A' % (epoch+1))

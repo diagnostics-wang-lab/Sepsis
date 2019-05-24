@@ -15,12 +15,13 @@ class lstm(nn.Module):
     input -> [40, n] physiological variable time series tensor
     output -> [n,] sepsis label tensor
     '''
-    def __init__(self, embedding, hidden_size, num_layers=2):
+    def __init__(self, embedding, hidden_size, num_layers=2, batch_size=1):
         super(lstm, self).__init__()
         self.hidden = hidden_size
+        self.batch_size = batch_size
 
         self.inp = nn.Linear(40, embedding) # input embedding - can be changed, potentially to small TCN
-        self.rnn = nn.LSTM(embedding, hidden_size, num_layers=num_layers) # RNN structure
+        self.rnn = nn.LSTM(embedding, hidden_size, num_layers=num_layers, batch_first=True) # RNN structure
         self.out = nn.Linear(hidden_size, 1) # output linear
 
         for m in self.modules():
@@ -34,16 +35,16 @@ class lstm(nn.Module):
 
         
     def step(self, time_step, hidden_state=None):
-        time_step = self.inp(time_step.view(1, -1).unsqueeze(1)) 
-        output, hidden_state = self.rnn(time_step, hidden_state)
-        output = self.out(output.squeeze(1))
+        time_step = self.inp(time_step) 
+        output, hidden_state = self.rnn(time_step.view(time_step.shape[0], 1, time_step.shape[1]), hidden_state) # unsqeeze not working
+        output = self.out(output.squeeze(1)).squeeze(1)
         return output, hidden_state
 
     def forward(self, in_states, hidden_state=None): 
-        steps = len(in_states) # TODO: (optional) add arguments for number of steps
-        outputs = Variable(torch.zeros(steps, 1, 1))
+        steps = in_states.shape[1]
+        outputs = Variable(torch.zeros(steps, self.batch_size))
         for i in range(steps):
-            time_step = in_states[i]
+            time_step = in_states[:,i,:]
             output, hidden_state = self.step(time_step, hidden_state)
             outputs[i] = output
-        return outputs, hidden_state #TODO:is hidden_state necessary?
+        return torch.t(outputs), hidden_state #TODO:is hidden_state necessary?

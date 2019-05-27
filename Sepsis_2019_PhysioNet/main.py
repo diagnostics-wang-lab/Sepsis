@@ -60,7 +60,7 @@ epochs = 10
 embedding = 40
 hidden_size = 64
 num_layers = 2
-batch_size = 8
+batch_size = 32
 save_rate = 10
 
 train_data = Dataset(partition['train'])
@@ -80,6 +80,8 @@ optimizer = optim.SGD(model.parameters(), lr=0.001)
 
 train_losses = np.zeros(epochs)
 val_losses = np.zeros(epochs)
+train_acc = np.zeros(epochs)
+val_acc = np.zeros(epochs)
 
 # TODO: Figure out batching with different sizes w/o excessive padding
 # TODO: edit loss so that it ignores -1s
@@ -88,6 +90,8 @@ start = time.time()
 for epoch in range(epochs):
     # Training
     train_loss = 0
+    train_total = 0
+    train_correct = 0
     for batch, labels in train_loader:
         # pass to GPU if available
         batch, labels = batch.to(args.device), labels.to(args.device)
@@ -102,13 +106,21 @@ for epoch in range(epochs):
 
         optimizer.zero_grad()
         outputs = model(batch, seq_len, max_len, batch_size)
+        
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
         train_losses[epoch] += loss.data / len(train_loader)
-    
+        
+        for i in range(labels.shape[0]):
+            train_correct += (torch.round(F.sigmoid(outputs[i, :int(seq_len[i])])) == labels[i,:int(seq_len[i])]).sum()
+        train_total += seq_len.sum()
+    train_acc[epoch] += train_correct/train_total
+
     # Validation
     val_loss = 0
+    val_total = 0
+    val_correct = 0
     with torch.set_grad_enabled(False):
         for batch, labels in val_loader:
             # pass to GPU if available
@@ -124,10 +136,15 @@ for epoch in range(epochs):
 
             outputs = model(batch, seq_len, max_len, batch_size)
             loss = criterion(outputs, labels)
-
             val_losses[epoch] += loss.data / len(val_loader)
 
+            for i in range(labels.shape[0]):
+                val_correct += (torch.round(F.sigmoid(outputs[i, :int(seq_len[i])])) == labels[i,:int(seq_len[i])]).sum()
+            val_total += seq_len.sum()
+        val_acc[epoch] += val_correct/val_total
+
     print('Epoch', epoch+1, 'train loss:', train_losses[epoch], 'validation loss:', val_losses[epoch])
+    print('Epoch', epoch+1, 'train acc: ', train_acc[epoch], 'validation acc: ', val_acc[epoch])
     print('total runtime:', str(round(time.time() - start, 2)))
 
     np.save('C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/', train_losses)

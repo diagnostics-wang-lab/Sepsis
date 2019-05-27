@@ -7,7 +7,6 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch.autograd import Variable
 import math
-import gpytorch # currently unused
 
 class lstm(nn.Module):
     '''

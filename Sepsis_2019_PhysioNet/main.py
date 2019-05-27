@@ -10,7 +10,6 @@ from torch.nn import functional as F
 from torch.autograd import Variable
 from torch import optim
 import math
-import gpytorch # currently unused
 from model import lstm
 from pytorch_data_loader import Dataset
 from driver import save_challenge_predictions
@@ -39,28 +38,24 @@ def sort_by_seq_len(labels, pad_val=-1):
         arr = l.data.numpy()
         unique, counts = np.unique(arr, return_counts=True)
         counts = dict(zip(unique, counts))
-        seq_len = np.append(seq_len, labels.shape[1] - counts[pad_val])
+        try: # will fail on max_len sequence since no -1 dict entries
+            seq_len = np.append(seq_len, labels.shape[1] - counts[pad_val])
+        except: seq_len = np.append(seq_len, len(l.data))
     # sort by sequence lengths
     order = torch.from_numpy(np.argsort(seq_len*-1))
     seq_len = torch.from_numpy(seq_len[order])
     return order, seq_len
 
-'''remove all of these once data_loader is working '''
-#train_data, train_labels = load_from_file('/home/wanglab/Osvald/CinC_data/setA')
-#train_data, train_labels = load_from_file('/home/wanglab/Osvald/Sepsis/small_train')
-#train_data, train_labels = load_from_file('D:\Sepsis Challenge\setA')
-#train_data, train_labels = load_from_file(r'C:\Users\Osvald\Sepsis_ML\small_train')
-#train_data, train_labels = load_from_file(r'C:\Users\Osvald\Sepsis_ML\test')
 
 partition = dict([])
-partition['train'] = list(range(75))
-partition['validation'] = list(range(75,100))
+partition['train'] = list(range(150))
+partition['validation'] = list(range(150,200))
 
-epochs = 10
+epochs = 30
 embedding = 40
 hidden_size = 64
 num_layers = 2
-batch_size = 32
+batch_size = 4
 save_rate = 10
 
 train_data = Dataset(partition['train'])
@@ -80,18 +75,21 @@ optimizer = optim.SGD(model.parameters(), lr=0.001)
 
 train_losses = np.zeros(epochs)
 val_losses = np.zeros(epochs)
-train_acc = np.zeros(epochs)
-val_acc = np.zeros(epochs)
+# train accuracy
+train_pos_acc = np.zeros(epochs)
+train_neg_acc = np.zeros(epochs)
+# val accuracy
+val_pos_acc = np.zeros(epochs)
+val_neg_acc = np.zeros(epochs)
+
 
 # TODO: Figure out batching with different sizes w/o excessive padding
-# TODO: edit loss so that it ignores -1s
-
 start = time.time()
 for epoch in range(epochs):
     # Training
-    train_loss = 0
-    train_total = 0
-    train_correct = 0
+    running_loss = 0
+    pos_total, pos_correct = 0, 0
+    neg_total, neg_correct = 0, 0
     for batch, labels in train_loader:
         # pass to GPU if available
         batch, labels = batch.to(args.device), labels.to(args.device)
@@ -100,27 +98,36 @@ for epoch in range(epochs):
             order, seq_len = sort_by_seq_len(labels) #TODO: Fix this inefficient method of counting sequence lengths -> move to data loader (in val loop too)            
             labels = labels[order, :]
             batch = batch[order, :]
-        else: 
-                seq_len = torch.Tensor([1])
-                labels = labels.squeeze()      
+        else: # if final batch is size 1
+            seq_len = torch.Tensor([max_len])
 
         optimizer.zero_grad()
         outputs = model(batch, seq_len, max_len, batch_size)
-        
+        outputs = outputs.view(-1, max_len)
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
-        train_losses[epoch] += loss.data / len(train_loader)
+        running_loss += loss.data.numpy()/seq_len.sum().numpy()
+    
         
+        # Train Accuracy
         for i in range(labels.shape[0]):
-            train_correct += (torch.round(F.sigmoid(outputs[i, :int(seq_len[i])])) == labels[i,:int(seq_len[i])]).sum()
-        train_total += seq_len.sum()
-    train_acc[epoch] += train_correct/train_total
+            targets = labels.data[i,:int(seq_len[i])].numpy()
+            predictions = torch.round(torch.sigmoid(outputs.data[i, :int(seq_len[i])])).numpy()
+            match = targets == predictions
+            pos_total += targets.sum()
+            neg_total += (targets == 0).sum()
+            pos_correct += (match * targets).sum()
+            neg_correct += (match * (targets == 0)).sum()
+
+    train_losses[epoch] = running_loss/len(train_loader)
+    train_pos_acc[epoch] = pos_correct/pos_total
+    train_neg_acc[epoch] = neg_correct/neg_total
 
     # Validation
-    val_loss = 0
-    val_total = 0
-    val_correct = 0
+    running_loss = 0
+    pos_total, pos_correct = 0, 0
+    neg_total, neg_correct = 0, 0
     with torch.set_grad_enabled(False):
         for batch, labels in val_loader:
             # pass to GPU if available
@@ -130,27 +137,37 @@ for epoch in range(epochs):
                 order, seq_len = sort_by_seq_len(labels)  
                 labels = labels[order, :]
                 batch = batch[order, :]
-            else: 
-                seq_len = torch.Tensor([1])
-                labels = labels.squeeze()
+            else: # if final batch is size 1
+                seq_len = torch.Tensor([max_len])
 
             outputs = model(batch, seq_len, max_len, batch_size)
+            outputs = outputs.view(-1, max_len)
             loss = criterion(outputs, labels)
-            val_losses[epoch] += loss.data / len(val_loader)
-
+            running_loss += loss.data.numpy()/seq_len.sum().numpy()
+            
+            # Validation Accuracy
             for i in range(labels.shape[0]):
-                val_correct += (torch.round(F.sigmoid(outputs[i, :int(seq_len[i])])) == labels[i,:int(seq_len[i])]).sum()
-            val_total += seq_len.sum()
-        val_acc[epoch] += val_correct/val_total
+                targets = labels.data[i,:int(seq_len[i])].numpy()
+                predictions = torch.round(torch.sigmoid(outputs.data[i, :int(seq_len[i])])).numpy()
+                match = targets == predictions
+                pos_total += targets.sum()
+                neg_total += (targets == 0).sum()
+                pos_correct += (match * targets).sum()
+                neg_correct += (match * (targets == 0)).sum()
 
-    print('Epoch', epoch+1, 'train loss:', train_losses[epoch], 'validation loss:', val_losses[epoch])
-    print('Epoch', epoch+1, 'train acc: ', train_acc[epoch], 'validation acc: ', val_acc[epoch])
+        val_losses[epoch] = running_loss/len(val_loader)
+        val_pos_acc[epoch] = pos_correct/pos_total
+        val_neg_acc[epoch] = neg_correct/neg_total
+
+    print('Epoch', epoch+1, 'train avg loss:', train_losses[epoch], 'validation avg loss:', val_losses[epoch])
+    print('Epoch', epoch+1, 'train pos acc:', train_pos_acc[epoch], 'validation pos acc:', val_pos_acc[epoch])
+    print('Epoch', epoch+1, 'train neg acc:', train_neg_acc[epoch], 'validation neg acc:', val_neg_acc[epoch])
     print('total runtime:', str(round(time.time() - start, 2)))
 
-    np.save('C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/', train_losses)
-    np.save('C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/', val_losses)
-    if (epoch+1) % save_rate ==0:
-       torch.save(model.state_dict(), 'C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/model_epoch%s' % (epoch+1))
+    #np.save('C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/', train_losses)
+    #np.save('C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/', val_losses)
+    #if (epoch+1) % save_rate ==0:
+    #   torch.save(model.state_dict(), 'C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/model_epoch%s' % (epoch+1))
         
     #np.save('/home/wanglab/Osvald/Sepsis/Models/lstm40_2_64/losses', losses)
     #if (epoch+1) % save_rate ==0:
@@ -158,4 +175,9 @@ for epoch in range(epochs):
     
 plt.plot(train_losses)
 plt.plot(val_losses)
+plt.show()
+plt.plot(train_pos_acc)
+plt.plot(train_neg_acc)
+plt.plot(val_pos_acc)
+plt.plot(val_neg_acc)
 plt.show()

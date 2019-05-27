@@ -120,12 +120,15 @@ class Dataset(data.Dataset):
         return x, y
 
 ''' Load with no resizing example '''
-#train_data, train_labels = load_data(train_dir, limit=None, split=True)
+#train_data, _ = load_data(train_dir, limit=100, split=False)
 #train_data = data_process(train_data, expand_dims=False) # only tuns NaNs to zeros
+#for i,pt in enumerate(train_data):
+#    print(pt.shape)
+#    torch.save(torch.from_numpy(pt), 'C:\\Users\\Osvald\\Sepsis_ML\\Sepsis_2019_PhysioNet\\vl_data\\'+str(i)+'.pt')
 #save_to_file('/home/wanglab/Osvald/CinC_data/setB', train_data, train_labels)
 
 '''Load with resizing example''' # data shape (n, 40, max_len) labels shape (n, max_len)
-#train_data, _= load_data(train_dir, limit=2000, split=False)
+#train_data, _= load_data(train_dir, limit=10, split=False)
 #train_data = data_process(train_data, expand_dims=True)
 #print(train_data.shape)
 #print(train_labels.shape)

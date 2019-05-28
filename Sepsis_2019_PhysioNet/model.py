@@ -45,10 +45,13 @@ class lstm(nn.Module):
     
     def forward(self, X, seq_len, max_len, hidden_state=None): 
         self.hidden = self.init_hidden()
+        #print(seq_len.device)
+        #print(seq_len.type())
+        #print(seq_len.shape)
         X = self.inp(X)
-        X = torch.nn.utils.rnn.pack_padded_sequence(X, seq_len, batch_first=True, enforce_sorted=False)
+        #X = torch.nn.utils.rnn.pack_padded_sequence(X, seq_len.long(), batch_first=True, enforce_sorted=False)
         X, self.hidden = self.rnn(X, self.hidden)
-        X, _ = torch.nn.utils.rnn.pad_packed_sequence(X, batch_first=True, padding_value=-1, total_length=max_len)
+        #X, _ = torch.nn.utils.rnn.pad_packed_sequence(X, batch_first=True, padding_value=-1, total_length=max_len)
         X = self.out(X)
         return X.squeeze()
         

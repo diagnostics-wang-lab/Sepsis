@@ -16,6 +16,10 @@ from driver import save_challenge_predictions
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 
+data_path = 'C:/Users/Osvald/Sepsis_ML/'
+save_path = 'C:/Users/Osvald/Sepsis_ML/models/'
+model_name = 'lstm'
+
 #TODO: add more args, including train, etc.
 parser = argparse.ArgumentParser(description='PyTorch Example')
 parser.add_argument('--disable-cuda', action='store_true',
@@ -48,20 +52,20 @@ def sort_by_seq_len(labels, pad_val=-1):
 
 
 partition = dict([])
-partition['train'] = list(range(150))
-partition['validation'] = list(range(150,200))
+partition['train'] = list(range(5))
+partition['validation'] = list(range(15,20))
 
-epochs = 30
+epochs = 3
 embedding = 40
 hidden_size = 64
 num_layers = 2
 batch_size = 4
 save_rate = 10
 
-train_data = Dataset(partition['train'])
+train_data = Dataset(partition['train'], data_path)
 train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
-val_data = Dataset(partition['validation'])
+val_data = Dataset(partition['validation'], data_path)
 val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=True)
 
 ratio = 10 # TODO: manually find ratio of sepsis occurence
@@ -164,20 +168,29 @@ for epoch in range(epochs):
     print('Epoch', epoch+1, 'train neg acc:', train_neg_acc[epoch], 'validation neg acc:', val_neg_acc[epoch])
     print('total runtime:', str(round(time.time() - start, 2)))
 
-    #np.save('C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/', train_losses)
-    #np.save('C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/', val_losses)
-    #if (epoch+1) % save_rate ==0:
-    #   torch.save(model.state_dict(), 'C:/Users/Osvald/Sepsis_ML/Models/lstm_batch/model_epoch%s' % (epoch+1))
-        
-    #np.save('/home/wanglab/Osvald/Sepsis/Models/lstm40_2_64/losses', losses)
-    #if (epoch+1) % save_rate ==0:
-    #   torch.save(model.state_dict(), '/home/wanglab/Osvald/Sepsis/Models/lstm40_2_64/model_epoch%s_A' % (epoch+1))
-    
-plt.plot(train_losses)
-plt.plot(val_losses)
-plt.show()
-plt.plot(train_pos_acc)
-plt.plot(train_neg_acc)
-plt.plot(val_pos_acc)
-plt.plot(val_neg_acc)
+    np.save(save_path + model_name +'/train_losses', train_losses)
+    np.save(save_path + model_name +'/val_losses', val_losses)
+    np.save(save_path + model_name +'/train_pos_acc', train_pos_acc)
+    np.save(save_path + model_name +'/train_neg_acc', train_neg_acc)
+    np.save(save_path + model_name +'/val_pos_acc', val_pos_acc)
+    np.save(save_path + model_name +'/val_neg_acc', val_neg_acc)
+
+    if (epoch+1) % save_rate ==0:
+       torch.save(model.state_dict(), save_path + model_name + '/model_epoch%s' % (epoch+1))
+
+plt.subplot(1,2,1)   
+plt.plot(train_losses, label='train')
+plt.plot(val_losses, label='val')
+plt.legend()
+plt.xlabel('Epoch')
+plt.ylabel('Weighted BCE Loss')
+plt.subplot(1,2,2)
+plt.plot(train_pos_acc, label='train_pos')
+plt.plot(train_neg_acc, label='train_neg')
+plt.plot(val_pos_acc, label='val_pos')
+plt.plot(val_neg_acc, label='val_neg')
+plt.legend()
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.suptitle('LSTM model')
 plt.show()

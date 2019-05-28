@@ -8,6 +8,7 @@ from driver import save_challenge_predictions
 
 train_dir = "D:/Sepsis Challenge/training"
 #train_dir = '/home/wanglab/Osvald/CinC_data/training_setB'
+pth = 'C:/Users/Osvald/Sepsis_ML/'
 
 def load_challenge_data(file, split=True):
     with open(file, 'r') as f:
@@ -100,8 +101,9 @@ def load_from_file(name):
 
 class Dataset(data.Dataset):
   'Characterizes a dataset for PyTorch'
-  def __init__(self, IDs):
+  def __init__(self, IDs, path):
         self.IDs = IDs #list of IDs in dataset
+        self.path = path
 
   def __len__(self):
         return len(self.IDs)
@@ -113,12 +115,13 @@ class Dataset(data.Dataset):
 
         # Load data and get label
         # TODO: add arg for full path to data folder
-        x = torch.load('C:\\Users\\Osvald\\Sepsis_ML\\Sepsis_2019_PhysioNet\\data\\' + ID + '.pt')
+        x = torch.load(self.path + 'Sepsis_2019_PhysioNet/data/' + ID + '.pt')
         y = x[:,-1]
         x = x[:,:-1]
 
         return x, y
 
+#TODO: turn these into functions
 ''' Load with no resizing example '''
 #train_data, _ = load_data(train_dir, limit=100, split=False)
 #train_data = data_process(train_data, expand_dims=False) # only tuns NaNs to zeros
@@ -134,7 +137,7 @@ class Dataset(data.Dataset):
 #print(train_labels.shape)
 '''
 for i,pt in enumerate(train_data):
-    torch.save(torch.from_numpy(pt), 'C:\\Users\\Osvald\\Sepsis_ML\\Sepsis_2019_PhysioNet\\data\\'+str(i)+'.pt')
+    torch.save(torch.from_numpy(pt), pth + 'Sepsis_2019_PhysioNet/data/' +str(i)+ '.pt')
 '''
 
 #save_to_file(r'C:\Users\Osvald\Sepsis_ML\test', train_data, train_labels)

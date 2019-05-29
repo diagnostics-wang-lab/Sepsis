@@ -125,27 +125,20 @@ class Dataset(data.Dataset):
 def collate_fn(data):
     '''Creates mini-batch tensors from the list of tuples (image, caption).
     #TODO: add option for GPU
-    Args:
-        data: list of tuples (clinical vars, labels). 
-            - clinical var: (n, 40) tensor.
-            - labels : (n,1) tensor
-
     '''
     #sort by descending length w/in mini-batch
     data.sort(key=lambda x: len(x[1]), reverse=True)
     inputs, labels = zip(*data)
-    max_len = inputs[0].shape[0]
-    seq_len = [int(inputs[i].shape[0]) for i in range(len(inputs))]
+    seq_len = torch.as_tensor([inputs[i].shape[0] for i in range(len(inputs))], dtype=torch.double)
 
+    out_data= torch.zeros((len(inputs), inputs[0].shape[0], inputs[0].shape[1])) # (B, max, 40) tensor of zeros
+    out_labels = torch.zeros((len(inputs), labels[0].shape[0])) # (B, 40) tensor of zreos
     for i in range(len(inputs)):
-        d_extension = (torch.ones((max_len - inputs[i].shape[0] ,40))*-1).cuda()
-        l_extension = (torch.ones(max_len - inputs[i].shape[0])*-1).cuda()
-        torch.cat((inputs[i], d_extension), dim=0, out = inputs[i])
-        torch.cat((labels[i], l_extension), dim=0, out = labels[i])
+        # fill in available data
+        out_data[i, :inputs[i].shape[0], :] = inputs[i]
+        out_labels[i, :labels[i].shape[0]] = labels[i]
 
-    inputs = torch.stack(inputs, 0)
-    labels = torch.stack(labels, 0)
-    return inputs , labels , torch.as_tensor(seq_len, dtype=torch.double).cpu()
+    return out_data, out_labels, seq_len#inputs , labels , seq_len #torch.as_tensor(seq_len, dtype=torch.double).cpu()
 
 #TODO: turn these into functions
 ''' Load with no resizing example '''

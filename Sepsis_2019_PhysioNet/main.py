@@ -15,6 +15,8 @@ from pytorch_data_loader import Dataset, collate_fn
 from driver import save_challenge_predictions
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
+#os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+#torch.backends.cudnn.enabled = False
 
 #data_path = 'C:/Users/Osvald/Sepsis_ML/'
 data_path = '/home/osvald/Projects/Diagnostics/CinC_data/tensors/'
@@ -55,14 +57,14 @@ def sort_by_seq_len(labels, pad_val=-1):
 partition = dict([])
 #partition['train'] = list(range(12288))
 #partition['validation'] = list(range(12288,15360))
-partition['train'] = list(range(14400))
-partition['validation'] = list(range(14400,20320))
+partition['train'] = list(range(14336))
+partition['validation'] = list(range(14336,19456))
 
 epochs = 20
 embedding = 40
 hidden_size = 64
 num_layers = 2
-batch_size = 32
+batch_size = 64
 save_rate = 1
 l_r = 0.001
 
@@ -118,7 +120,7 @@ for epoch in range(epochs):
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
-        running_loss += loss.cpu().data.numpy()/seq_len.sum().numpy()
+        running_loss += loss.cpu().data.numpy()/seq_len.cpu().sum().numpy()#loss.cpu().data.numpy()/seq_len.sum().numpy()
     
         
         # Train Accuracy
@@ -156,7 +158,7 @@ for epoch in range(epochs):
             outputs = model(batch, seq_len, max_len, batch_size)
             outputs = outputs.view(-1, max_len)
             loss = criterion(outputs, labels)
-            running_loss += loss.cpu().data.numpy()/seq_len.sum().numpy()
+            running_loss += loss.cpu().data.numpy()/seq_len.cpu().sum().numpy()
             
             # Validation Accuracy
             for i in range(labels.shape[0]):

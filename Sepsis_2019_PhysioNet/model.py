@@ -7,6 +7,8 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch.autograd import Variable
 import math
+# for hotfix to pack_padded_sequence
+from torch.nn.utils.rnn import pack_padded_sequence, PackedSequence
 
 class lstm(nn.Module):
     '''
@@ -45,31 +47,31 @@ class lstm(nn.Module):
     
     def forward(self, X, seq_len, max_len, hidden_state=None): 
         self.hidden = self.init_hidden()
-        #print(seq_len.device)
-        #print(seq_len.type())
-        #print(seq_len.shape)
         X = self.inp(X)
-        #X = torch.nn.utils.rnn.pack_padded_sequence(X, seq_len.long(), batch_first=True, enforce_sorted=False)
+        X = hotfix_pack_padded_sequence(X, seq_len, batch_first=True, enforce_sorted=False)
+        #X = torch.nn.utils.rnn.pack_padded_sequence(X, seq_len, batch_first=True, enforce_sorted=False)
         X, self.hidden = self.rnn(X, self.hidden)
-        #X, _ = torch.nn.utils.rnn.pad_packed_sequence(X, batch_first=True, padding_value=-1, total_length=max_len)
+        X, _ = torch.nn.utils.rnn.pad_packed_sequence(X, batch_first=True, padding_value=-1, total_length=max_len)
         X = self.out(X)
         return X.squeeze()
         
-
-    ''' #Old code w/o packing - loss includes padding
-    def step(self, time_step, hidden_state=None):
-        time_step = self.inp(time_step) 
-        output, hidden_state = self.rnn(time_step.view(time_step.shape[0], 1, time_step.shape[1]), hidden_state) # unsqeeze not working
-        output = self.out(output.squeeze(1)).squeeze(1)
-        return output, hidden_state
-
-
-    def forward(self, in_states, hidden_state=None): 
-        steps = in_states.shape[1]
-        outputs = Variable(torch.zeros(steps, self.batch_size))
-        for i in range(steps):
-            time_step = in_states[:,i,:]
-            output, hidden_state = self.step(time_step, hidden_state)
-            outputs[i] = output
-        return torch.t(outputs), hidden_state #TODO:is hidden_state necessary?
+def hotfix_pack_padded_sequence(input, lengths, batch_first=False, enforce_sorted=True):
     '''
+    #TODO: if ever fixed just go back to original
+    GPU errors with orig func:
+    torch.nn.utils.rnn.pack_padded_sequence()
+    this fix was provided on pytorch board
+    ''' 
+    lengths = torch.as_tensor(lengths, dtype=torch.int64)
+    lengths = lengths.cpu()
+    if enforce_sorted:
+        sorted_indices = None
+    else:
+        lengths, sorted_indices = torch.sort(lengths, descending=True)
+        sorted_indices = sorted_indices.to(input.device)
+        batch_dim = 0 if batch_first else 1
+        input = input.index_select(batch_dim, sorted_indices)
+
+    data, batch_sizes = \
+        torch._C._VariableFunctions._pack_padded_sequence(input, lengths, batch_first)
+    return PackedSequence(data, batch_sizes, sorted_indices)

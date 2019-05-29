@@ -5,13 +5,14 @@ import torch
 from torch.utils import data
 import os, sys
 from driver import save_challenge_predictions
+import matplotlib.pyplot as plt
 
 #raw_dir = "D:/Sepsis Challenge/training"
 #pth = 'C:/Users/Osvald/Sepsis_ML/'
 raw_dir = '/home/osvald/Projects/Diagnostics/CinC_data/training'
 pth = '/home/osvald/Projects/Diagnostics/CinC_data/tensors/'
 
-def load_challenge_data(file, split=True):
+def load_challenge_data(file):
     with open(file, 'r') as f:
         header = f.readline().strip()
         column_names = header.split('|')
@@ -20,16 +21,10 @@ def load_challenge_data(file, split=True):
     if column_names[-1] != 'SepsisLabel':
         print(file, ' does not have sepsis label')
         return
-    elif split:
-        labels = data[:, -1]
-        column_names = column_names[:-1]
-        data = data[:, :-1]
-    else:
-        data, labels = data, None
     
-    return data, labels
+    return data
 
-def load_data(input_directory, limit=100, split=True):
+def load_data(input_directory, limit=100):
 
     # Find files.
     files = []
@@ -37,71 +32,49 @@ def load_data(input_directory, limit=100, split=True):
         if os.path.isfile(os.path.join(input_directory, f)) and not f.lower().startswith('.') and f.lower().endswith('psv'):
             files.append(f)
 
-    # TODO: implement output (Maybe scrap)
-    #if not os.path.isdir(output_directory):
-    #    os.mkdir(output_directory)
-
     data_arr = []
-    label_arr = []
     # Iterate over files.
     for f in files:
         # Load data.
         input_file = os.path.join(input_directory, f)
-        data,labels = load_challenge_data(input_file, split)
+        data = load_challenge_data(input_file)
         data_arr.append(np.transpose(data))
-        label_arr.append(labels)
         if len(data_arr) == limit:
             break
 
-    return data_arr, label_arr
+    return data_arr
 
-def data_process(dataset, expand_dims=False):
+def data_process(dataset, length_bins=True, class_count=True):
     '''
-    preprocessing - expand dims to match largest '/home/wanglab/Osvald/CinC_data/training_setB'entry
-    output is shape [n, time_steps, 40] np array
-    each row is an hours worth of data
+    turns NaN to zero and
     TODO: edit labels to match utility funciton
           currently: 1 if past t_sepsis - 6, 0 otherwise
     '''
-    n = len(dataset) # number of patients
-    max_len = 0
-    for i,pt in enumerate(dataset): #get max_len and remove NaN
-        if pt.shape[1] > max_len:
-            max_len = pt.shape[1]
+    lengths = {} 
+    label_counts = [0,0]
+    time_step_counts = [0,0]
+    for i,pt in enumerate(dataset): #get max_len and remove NaN  
+        if length_bins:
+            decade = (pt.shape[1] // 10) * 10
+            if decade in lengths.keys():
+                lengths[decade] += 1
+            else:
+                lengths[decade] = 1
+
+        #TODO: change this to turn NaN to something else?
         np.nan_to_num(pt, copy=False) #replaces NaN with zeros
+
+        if class_count:
+            time_step_counts[0] += int(pt.shape[1] - pt[-1,:].sum())
+            time_step_counts[1] += int(pt[-1,:].sum())
+            label_counts[bool(pt[-1,:].sum())] += 1
+        
         dataset[i] = pt.T
 
-    if not expand_dims:
-        return dataset
-
-    for i, pt in enumerate(dataset): # expand dimensions to match largest input
-        diff = max_len - pt.shape[0]
-        if diff:
-            pt = np.append(pt, np.ones((41, diff)).T * -1, axis=0)
-        pt = np.expand_dims(pt, axis=0)
-
-        #TODO: fix this very ugly workaround, here because of np flattening tendency
-        if i == 0: 
-            output = pt
-        else:
-            output = np.append(output, pt, axis=0)
-    
-    #data, labels = output[:,:,:-1], output[:,:,-1]
-    return output #data, labels
-
-def save_to_file(name, data, labels):
-    np.save(name + '_data', data)
-    np.save(name + '_labels', labels)
-
-def load_from_file(name):
-    data = np.load(name + '_data.npy', allow_pickle=True)
-    labels = np.load(name + '_labels.npy', allow_pickle=True)
-    print('\nLoaded data of shape:', data.shape)
-    print('Loaded labels of shape:', labels.shape, '\n')
-    return data, labels
+    return dataset, lengths, label_counts, time_step_counts
 
 class Dataset(data.Dataset):
-  'Characterizes a dataset for PyTorch' #TODO: add option for gpu
+  'Characterizes a dataset for PyTorch'
   def __init__(self, IDs, path):
         self.IDs = IDs #list of IDs in dataset
         self.path = path
@@ -115,53 +88,46 @@ class Dataset(data.Dataset):
         ID = str(self.IDs[index])
 
         # Load data and get label
-        # TODO: add arg for full path to data folder
         x = torch.load(self.path + ID + '.pt')
-        y = x[:,-1].cuda()
-        x = x[:,:-1].cuda()
+        y = x[:,-1]
+        x = x[:,:-1]
 
         return x, y
 
 def collate_fn(data):
-    '''Creates mini-batch tensors from the list of tuples (image, caption).
-    #TODO: add option for GPU
-    '''
-    #sort by descending length w/in mini-batch
-    data.sort(key=lambda x: len(x[1]), reverse=True)
+    ''' Creates mini-batch tensors from the list of tuples (data, label). '''
+
+    data.sort(key=lambda x: len(x[1]), reverse=True) #sort by descending length w/in mini-batch
     inputs, labels = zip(*data)
-    seq_len = torch.as_tensor([inputs[i].shape[0] for i in range(len(inputs))], dtype=torch.double)
+    seq_len = torch.as_tensor([inputs[i].shape[0] for i in range(len(inputs))], dtype=torch.double).cpu()
 
     out_data= torch.zeros((len(inputs), inputs[0].shape[0], inputs[0].shape[1])) # (B, max, 40) tensor of zeros
-    out_labels = torch.zeros((len(inputs), labels[0].shape[0])) # (B, 40) tensor of zreos
-    for i in range(len(inputs)):
-        # fill in available data
+    out_labels = torch.zeros((len(inputs), labels[0].shape[0]))                  # (B, 40) tensor of zreos
+
+    for i in range(len(inputs)): # fill in available data
         out_data[i, :inputs[i].shape[0], :] = inputs[i]
         out_labels[i, :labels[i].shape[0]] = labels[i]
 
-    return out_data, out_labels, seq_len#inputs , labels , seq_len #torch.as_tensor(seq_len, dtype=torch.double).cpu()
+    return out_data, out_labels, seq_len
 
-#TODO: turn these into functions
-''' Load with no resizing example '''
-#\train_data, _ = load_data(raw_dir, limit=100, split=False)
-#train_data = data_process(train_data, expand_dims=False) # only tuns NaNs to zeros
-#for i,pt in enumerate(train_data):
-#    print(pt.shape)
-#    torch.save(torch.from_numpy(pt), 'C:\\Users\\Osvald\\Sepsis_ML\\Sepsis_2019_PhysioNet\\vl_data\\'+str(i)+'.pt')
-#save_to_file('/home/wanglab/Osvald/CinC_data/setB', train_data, train_labels)
+#TODO: clean up and put into functions
+'''
+train_data = load_data(raw_dir, limit=None)
+train_data, lengths, l_c, ts_c = data_process(train_data)
+print(l_c)
+print(ts_c)
 
-'''Load with resizing example''' # data shape (n, 40, max_len) labels shape (n, max_len)
-#train_data, _= load_data(raw_dir, limit=None, split=False)
-#train_data = data_process(train_data, expand_dims=True)
-#print(train_data.shape)
+train_dataB = load_data('/home/osvald/Projects/Diagnostics/CinC_data/training_setB', limit=None)
+train_dataB, lengths, l_cB, ts_cB = data_process(train_data)
+print(l_cB)
+print(ts_cB)
+print('no sepsis label',l_c[0]+l_cB[0])
+print('sepsis label',l_c[1]+l_cB[1])
+print('no sepsis step',ts_c[0]+ts_cB[0])
+print('sepsis step',ts_c[1]+ts_cB[1])
+'''
+#plt.bar(lengths.keys(), lengths.values(), width=5, linewidth=2, edgecolor='k',color='b')
+#plt.show()
 
 #for i,pt in enumerate(train_data):
 #    torch.save(torch.from_numpy(pt), pth + str(i)+ '.pt')
-
-#save_to_file(r'C:\Users\Osvald\Sepsis_ML\test', train_data, train_labels)
-
-'''padding'''
-#train_data, train_labels = load_data(raw_dir, limit=10, split=True)
-#print([pt.shape for pt in train_data])
-#train_data = data_process(train_data, expand_dims=True) # only tuns NaNs to zeros
-#print([pt.shape for pt in train_data])
-#lengths = [len(label) for label in train_labels]

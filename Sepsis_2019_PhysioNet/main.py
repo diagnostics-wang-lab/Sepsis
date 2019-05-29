@@ -15,15 +15,14 @@ from pytorch_data_loader import Dataset, collate_fn
 from driver import save_challenge_predictions
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
-#os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-#torch.backends.cudnn.enabled = False
 
+#TODO: make this a bit nicer
 #data_path = 'C:/Users/Osvald/Sepsis_ML/'
 data_path = '/home/osvald/Projects/Diagnostics/CinC_data/tensors/'
 save_path = '/home/osvald/Projects/Diagnostics/Sepsis/Models/'
-model_name = 'lstm01'
+model_name = 'lstm/lr0025_ratio50'
 
-#TODO: add more args, including train, etc.
+#TODO: add more args, including train/test, etc.
 parser = argparse.ArgumentParser(description='PyTorch Example')
 parser.add_argument('--disable-cuda', action='store_true',
                     help='Disable CUDA')
@@ -36,37 +35,22 @@ else:
     args.device = torch.device('cpu')
     torch.set_default_tensor_type('torch.DoubleTensor')
 
-def sort_by_seq_len(labels, pad_val=-1):
-    '''
-    returns descending order of array lengths ignoring pad_val entries
-    '''
-    seq_len = np.array([])
-    for l in labels:
-        arr = l.data.numpy()
-        unique, counts = np.unique(arr, return_counts=True)
-        counts = dict(zip(unique, counts))
-        try: # will fail on max_len sequence since no -1 dict entries
-            seq_len = np.append(seq_len, labels.shape[1] - counts[pad_val])
-        except: seq_len = np.append(seq_len, len(l.data))
-    # sort by sequence lengths
-    order = torch.from_numpy(np.argsort(seq_len*-1))
-    seq_len = torch.from_numpy(seq_len[order])
-    return order, seq_len
-
-
 partition = dict([])
-#partition['train'] = list(range(12288))
-#partition['validation'] = list(range(12288,15360))
+#TODO: fix batching so that partions don't need to be multiples of batch size
+#TODO: add random split somehow
+#TODO: integrate data from training set B
 partition['train'] = list(range(14336))
 partition['validation'] = list(range(14336,19456))
 
-epochs = 20
+#TODO: control with args
+#       be careful since some parameters are model specic!
+epochs = 100
 embedding = 40
 hidden_size = 64
 num_layers = 2
-batch_size = 64
-save_rate = 1
-l_r = 0.001
+batch_size = 128
+save_rate = 10
+l_r = 0.0025
 
 train_data = Dataset(partition['train'], data_path)
 train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
@@ -74,10 +58,13 @@ train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, colla
 val_data = Dataset(partition['validation'], data_path)
 val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
 
-ratio = 4 # TODO: manually find ratio of sepsis occurence
+ratio = 50 # TODO: manually find ratio of sepsis occurence
 
 model = lstm(embedding, hidden_size, num_layers, batch_size, args.device)
-model.load_state_dict(torch.load('/home/osvald/Projects/Diagnostics/Sepsis/Models/lstm/model_epoch20'))
+''' for loading previous model'''
+#TODO: make this controled by an arg when calling
+#TODO: also load losses and accuracy for graphing and add ability to continue them
+#model.load_state_dict(torch.load('/home/osvald/Projects/Diagnostics/Sepsis/Models/lstm/model_epoch20'))
 #model.eval()
 
 criterion = nn.BCEWithLogitsLoss(pos_weight=torch.DoubleTensor([ratio]).to(args.device))
@@ -92,8 +79,6 @@ train_neg_acc = np.zeros(epochs)
 val_pos_acc = np.zeros(epochs)
 val_neg_acc = np.zeros(epochs)
 
-
-# TODO: Figure out batching with different sizes w/o excessive padding
 start = time.time()
 for epoch in range(epochs):
     # Training
@@ -104,15 +89,6 @@ for epoch in range(epochs):
         # pass to GPU if available
         batch, labels = batch.to(args.device), labels.to(args.device)
         max_len = labels.shape[1]
-        #seq_len = torch.LongTensor(seq_len.cpu()).to('cpu')
-        #seq_len = seq_len.type(torch.int64).to('cpu')
-        '''
-        if labels.shape[0] != 1:
-            order, seq_len = sort_by_seq_len(labels) #TODO: Fix this inefficient method of counting sequence lengths -> move to data loader (in val loop too)            
-            labels = labels[order, :]
-            batch = batch[order, :]
-        else: # if final batch is size 1
-            seq_len = torch.Tensor([max_len])'''
 
         optimizer.zero_grad()
         outputs = model(batch, seq_len, max_len, batch_size)
@@ -120,9 +96,8 @@ for epoch in range(epochs):
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
-        running_loss += loss.cpu().data.numpy()/seq_len.cpu().sum().numpy()#loss.cpu().data.numpy()/seq_len.sum().numpy()
+        running_loss += loss.cpu().data.numpy()/seq_len.cpu().sum().numpy()
     
-        
         # Train Accuracy
         for i in range(labels.shape[0]):
             targets = labels.data[i,:int(seq_len[i])].cpu().numpy()
@@ -146,14 +121,6 @@ for epoch in range(epochs):
             # pass to GPU if available
             batch, labels = batch.to(args.device), labels.to(args.device)
             max_len = labels.shape[1]
-            
-            '''
-            if labels.shape[0] != 1:  
-                order, seq_len = sort_by_seq_len(labels)  
-                labels = labels[order, :]
-                batch = batch[order, :]
-            else: # if final batch is size 1
-                seq_len = torch.Tensor([max_len])'''
 
             outputs = model(batch, seq_len, max_len, batch_size)
             outputs = outputs.view(-1, max_len)
@@ -186,9 +153,10 @@ for epoch in range(epochs):
     np.save(save_path + model_name +'/val_pos_acc', val_pos_acc)
     np.save(save_path + model_name +'/val_neg_acc', val_neg_acc)
 
-    if (epoch+1) % save_rate ==0:
+    if (epoch+1) % save_rate ==0: #save model dict
        torch.save(model.state_dict(), save_path + model_name + '/model_epoch%s' % (epoch+1))
 
+#TODO: update this, shouldn't be hard coded
 plt.subplot(1,2,1)   
 plt.plot(train_losses, label='train')
 plt.plot(val_losses, label='val')

@@ -6,8 +6,10 @@ from torch.utils import data
 import os, sys
 from driver import save_challenge_predictions
 
-train_dir = "D:/Sepsis Challenge/training"
-#train_dir = '/home/wanglab/Osvald/CinC_data/training_setB'
+#raw_dir = "D:/Sepsis Challenge/training"
+#pth = 'C:/Users/Osvald/Sepsis_ML/'
+raw_dir = '/home/osvald/Projects/Diagnostics/CinC_data/training'
+pth = '/home/osvald/Projects/Diagnostics/CinC_data/tensors/'
 
 def load_challenge_data(file, split=True):
     with open(file, 'r') as f:
@@ -55,7 +57,7 @@ def load_data(input_directory, limit=100, split=True):
 
 def data_process(dataset, expand_dims=False):
     '''
-    preprocessing - expand dims to match largest entry
+    preprocessing - expand dims to match largest '/home/wanglab/Osvald/CinC_data/training_setB'entry
     output is shape [n, time_steps, 40] np array
     each row is an hours worth of data
     TODO: edit labels to match utility funciton
@@ -99,9 +101,10 @@ def load_from_file(name):
     return data, labels
 
 class Dataset(data.Dataset):
-  'Characterizes a dataset for PyTorch'
-  def __init__(self, IDs):
+  'Characterizes a dataset for PyTorch' #TODO: add option for gpu
+  def __init__(self, IDs, path):
         self.IDs = IDs #list of IDs in dataset
+        self.path = path
 
   def __len__(self):
         return len(self.IDs)
@@ -113,14 +116,40 @@ class Dataset(data.Dataset):
 
         # Load data and get label
         # TODO: add arg for full path to data folder
-        x = torch.load('C:\\Users\\Osvald\\Sepsis_ML\\Sepsis_2019_PhysioNet\\data\\' + ID + '.pt')
-        y = x[:,-1]
-        x = x[:,:-1]
+        x = torch.load(self.path + ID + '.pt')
+        y = x[:,-1].cuda()
+        x = x[:,:-1].cuda()
 
         return x, y
 
+def collate_fn(data):
+    '''Creates mini-batch tensors from the list of tuples (image, caption).
+    #TODO: add option for GPU
+    Args:
+        data: list of tuples (clinical vars, labels). 
+            - clinical var: (n, 40) tensor.
+            - labels : (n,1) tensor
+
+    '''
+    #sort by descending length w/in mini-batch
+    data.sort(key=lambda x: len(x[1]), reverse=True)
+    inputs, labels = zip(*data)
+    max_len = inputs[0].shape[0]
+    seq_len = [int(inputs[i].shape[0]) for i in range(len(inputs))]
+
+    for i in range(len(inputs)):
+        d_extension = (torch.ones((max_len - inputs[i].shape[0] ,40))*-1).cuda()
+        l_extension = (torch.ones(max_len - inputs[i].shape[0])*-1).cuda()
+        torch.cat((inputs[i], d_extension), dim=0, out = inputs[i])
+        torch.cat((labels[i], l_extension), dim=0, out = labels[i])
+
+    inputs = torch.stack(inputs, 0)
+    labels = torch.stack(labels, 0)
+    return inputs , labels , torch.as_tensor(seq_len, dtype=torch.double).cpu()
+
+#TODO: turn these into functions
 ''' Load with no resizing example '''
-#train_data, _ = load_data(train_dir, limit=100, split=False)
+#\train_data, _ = load_data(raw_dir, limit=100, split=False)
 #train_data = data_process(train_data, expand_dims=False) # only tuns NaNs to zeros
 #for i,pt in enumerate(train_data):
 #    print(pt.shape)
@@ -128,19 +157,17 @@ class Dataset(data.Dataset):
 #save_to_file('/home/wanglab/Osvald/CinC_data/setB', train_data, train_labels)
 
 '''Load with resizing example''' # data shape (n, 40, max_len) labels shape (n, max_len)
-#train_data, _= load_data(train_dir, limit=10, split=False)
+#train_data, _= load_data(raw_dir, limit=None, split=False)
 #train_data = data_process(train_data, expand_dims=True)
 #print(train_data.shape)
-#print(train_labels.shape)
-'''
-for i,pt in enumerate(train_data):
-    torch.save(torch.from_numpy(pt), 'C:\\Users\\Osvald\\Sepsis_ML\\Sepsis_2019_PhysioNet\\data\\'+str(i)+'.pt')
-'''
+
+#for i,pt in enumerate(train_data):
+#    torch.save(torch.from_numpy(pt), pth + str(i)+ '.pt')
 
 #save_to_file(r'C:\Users\Osvald\Sepsis_ML\test', train_data, train_labels)
 
 '''padding'''
-#train_data, train_labels = load_data(train_dir, limit=10, split=True)
+#train_data, train_labels = load_data(raw_dir, limit=10, split=True)
 #print([pt.shape for pt in train_data])
 #train_data = data_process(train_data, expand_dims=True) # only tuns NaNs to zeros
 #print([pt.shape for pt in train_data])

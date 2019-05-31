@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 #pth = 'C:/Users/Osvald/Sepsis_ML/'
 raw_dir = '/home/osvald/Projects/Diagnostics/CinC_data/training'
 pth = '/home/osvald/Projects/Diagnostics/CinC_data/tensors/'
+pos_pth = '/home/osvald/Projects/Diagnostics/CinC_data/A_pos/'
+neg_pth = '/home/osvald/Projects/Diagnostics/CinC_data/A_neg/'
 
 def load_challenge_data(file):
     with open(file, 'r') as f:
@@ -53,6 +55,7 @@ def data_process(dataset, length_bins=True, class_count=True):
     lengths = {} 
     label_counts = [0,0]
     time_step_counts = [0,0]
+    class_vec = np.zeros(len(dataset))
     for i,pt in enumerate(dataset): #get max_len and remove NaN  
         if length_bins:
             decade = (pt.shape[1] // 10) * 10
@@ -69,9 +72,11 @@ def data_process(dataset, length_bins=True, class_count=True):
             time_step_counts[1] += int(pt[-1,:].sum())
             label_counts[bool(pt[-1,:].sum())] += 1
         
+        class_vec[i] = bool(pt[-1,:].sum())
         dataset[i] = pt.T
 
-    return dataset, lengths, label_counts, time_step_counts
+
+    return dataset, class_vec, lengths, label_counts, time_step_counts
 
 class Dataset(data.Dataset):
   'Characterizes a dataset for PyTorch'
@@ -111,23 +116,39 @@ def collate_fn(data):
     return out_data, out_labels, seq_len
 
 #TODO: clean up and put into functions
-'''
-train_data = load_data(raw_dir, limit=None)
-train_data, lengths, l_c, ts_c = data_process(train_data)
-print(l_c)
-print(ts_c)
 
-train_dataB = load_data('/home/osvald/Projects/Diagnostics/CinC_data/training_setB', limit=None)
-train_dataB, lengths, l_cB, ts_cB = data_process(train_data)
-print(l_cB)
-print(ts_cB)
-print('no sepsis label',l_c[0]+l_cB[0])
-print('sepsis label',l_c[1]+l_cB[1])
-print('no sepsis step',ts_c[0]+ts_cB[0])
-print('sepsis step',ts_c[1]+ts_cB[1])
+#train_data = load_data(raw_dir, limit=14336)
+#train_data, classes, lengths, l_c, ts_c = data_process(train_data)
+#print(l_c)
+#print(ts_c)
+#for i,pt in enumerate(train_data):
+#    torch.save(torch.from_numpy(pt), pth + str(i)+ '.pt') 
+
 '''
+pos = 0
+neg = 0
+for i,pt in enumerate(train_data):
+    if classes[i] == 0 and pt.shape[0] <= 60:
+        torch.save(torch.from_numpy(pt), neg_pth + str(neg)+ '.pt')
+        neg += 1
+    elif classes[i] == 1 and pt.shape[0] <= 60:
+        torch.save(torch.from_numpy(pt), pos_pth + str(pos)+ '.pt')
+        pos += 1
+print(neg)
+print(pos)
+'''
+
+#train_dataB = load_data('/home/osvald/Projects/Diagnostics/CinC_data/training_setB', limit=None)
+#train_dataB, lengths, l_cB, ts_cB = data_process(train_data)
+#print(l_cB)
+#print(ts_cB)
+#print('no sepsis label',l_c[0]+l_cB[0])
+#print('sepsis label',l_c[1]+l_cB[1])
+#print('no sepsis step',ts_c[0]+ts_cB[0])
+#print('sepsis step',ts_c[1]+ts_cB[1])
+
 #plt.bar(lengths.keys(), lengths.values(), width=5, linewidth=2, edgecolor='k',color='b')
 #plt.show()
 
 #for i,pt in enumerate(train_data):
-#    torch.save(torch.from_numpy(pt), pth + str(i)+ '.pt')
+#    torch.save(torch.from_numpy(pt), pth + str(i)+ '.pt') 

@@ -1,29 +1,27 @@
 #!/usr/bin/env python
 
 import numpy as np
-import os, sys
 import time
 import argparse
 import torch
 import torch.nn as nn
-from torch.nn import functional as F
-from torch.autograd import Variable
+from torch.nn import functional as F #remove?
 from torch import optim
-import math
-from model import lstm
+from model import lstm, TCN
 from pytorch_data_loader import Dataset, collate_fn
 from driver import save_challenge_predictions
-import matplotlib.pyplot as plt
+from util import plotter, show_prog
 from torch.utils.data import DataLoader
 
 #TODO: make this a bit nicer
 #data_path = 'C:/Users/Osvald/Sepsis_ML/'
 data_path = '/home/osvald/Projects/Diagnostics/CinC_data/tensors/'
 save_path = '/home/osvald/Projects/Diagnostics/Sepsis/Models/'
-model_name = 'lstm/lr0025_ratio50'
+model_name = 'lstm/3x64_lr0025_r50_b512'
+
 
 #TODO: add more args, including train/test, etc.
-parser = argparse.ArgumentParser(description='PyTorch Example')
+parser = argparse.ArgumentParser(description='GPU control')
 parser.add_argument('--disable-cuda', action='store_true',
                     help='Disable CUDA')
 args = parser.parse_args()
@@ -37,20 +35,34 @@ else:
 
 partition = dict([])
 #TODO: fix batching so that partions don't need to be multiples of batch size
-#TODO: add random split somehow
+#TODO: paramaterize this so that numbers don't need to be computed each time
 #TODO: integrate data from training set B
 partition['train'] = list(range(14336))
 partition['validation'] = list(range(14336,19456))
+#partition['pos_train'] = list(range(1100))
+#partition['pos_validation'] = list(range(1100,1738))
+#partition['neg_train'] = list(range(1170))
+#partition['neg_validation'] = list(range(11700,18486))
 
 #TODO: control with args
 #       be careful since some parameters are model specic!
-epochs = 100
+#       probably just move model to the top and specify all of its args at start
+epochs = 2
 embedding = 40
+embed = False
 hidden_size = 64
-num_layers = 2
+num_layers = 3
 batch_size = 128
 save_rate = 10
 l_r = 0.0025
+save = False
+load_model = False
+load_folder = False
+offset = 0
+
+'''TCN test block
+paste from bottom
+/TCN test block'''
 
 train_data = Dataset(partition['train'], data_path)
 train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
@@ -60,27 +72,35 @@ val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=True, collate_f
 
 ratio = 50 # TODO: manually find ratio of sepsis occurence
 
-model = lstm(embedding, hidden_size, num_layers, batch_size, args.device)
+model = lstm(embedding, hidden_size, num_layers, batch_size, args.device, embed)
 ''' for loading previous model'''
+#TODO: put train/test into functions
 #TODO: make this controled by an arg when calling
 #TODO: also load losses and accuracy for graphing and add ability to continue them
-#model.load_state_dict(torch.load('/home/osvald/Projects/Diagnostics/Sepsis/Models/lstm/model_epoch20'))
-#model.eval()
+if load_model:
+    model.load_state_dict(torch.load(load_model))
+    train_losses = np.concatenate((np.load(load_folder +'/train_losses.npy'), np.zeros(epochs)))
+    train_pos_acc = np.concatenate((np.load(load_folder +'/train_pos_acc.npy'), np.zeros(epochs)))
+    train_neg_acc = np.concatenate((np.load(load_folder +'/train_neg_acc.npy'), np.zeros(epochs)))
+    val_losses = np.concatenate((np.load(load_folder +'/val_losses.npy'), np.zeros(epochs)))
+    val_pos_acc = np.concatenate((np.load(load_folder +'/val_pos_acc.npy'), np.zeros(epochs)))
+    val_neg_acc = np.concatenate((np.load(load_folder +'/val_neg_acc.npy'), np.zeros(epochs)))
+else:
+    train_losses = np.zeros(epochs)
+    val_losses = np.zeros(epochs)
+    # train accuracy
+    train_pos_acc = np.zeros(epochs)
+    train_neg_acc = np.zeros(epochs)
+    # val accuracy
+    val_pos_acc = np.zeros(epochs)
+    val_neg_acc = np.zeros(epochs)
 
 criterion = nn.BCEWithLogitsLoss(pos_weight=torch.DoubleTensor([ratio]).to(args.device))
 optimizer = optim.SGD(model.parameters(), lr=l_r)
 
-train_losses = np.zeros(epochs)
-val_losses = np.zeros(epochs)
-# train accuracy
-train_pos_acc = np.zeros(epochs)
-train_neg_acc = np.zeros(epochs)
-# val accuracy
-val_pos_acc = np.zeros(epochs)
-val_neg_acc = np.zeros(epochs)
 
 start = time.time()
-for epoch in range(epochs):
+for epoch in range(offset, offset + epochs):
     # Training
     running_loss = 0
     pos_total, pos_correct = 0, 0
@@ -96,7 +116,7 @@ for epoch in range(epochs):
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
-        running_loss += loss.cpu().data.numpy()/seq_len.cpu().sum().numpy()
+        running_loss += loss.cpu().data.numpy()
     
         # Train Accuracy
         for i in range(labels.shape[0]):
@@ -125,7 +145,7 @@ for epoch in range(epochs):
             outputs = model(batch, seq_len, max_len, batch_size)
             outputs = outputs.view(-1, max_len)
             loss = criterion(outputs, labels)
-            running_loss += loss.cpu().data.numpy()/seq_len.cpu().sum().numpy()
+            running_loss += loss.cpu().data.numpy()
             
             # Validation Accuracy
             for i in range(labels.shape[0]):
@@ -141,35 +161,52 @@ for epoch in range(epochs):
         val_pos_acc[epoch] = pos_correct/pos_total
         val_neg_acc[epoch] = neg_correct/neg_total
 
-    print('Epoch', epoch+1, 'train avg loss:', train_losses[epoch], 'validation avg loss:', val_losses[epoch])
-    print('Epoch', epoch+1, 'train pos acc:', train_pos_acc[epoch], 'validation pos acc:', val_pos_acc[epoch])
-    print('Epoch', epoch+1, 'train neg acc:', train_neg_acc[epoch], 'validation neg acc:', val_neg_acc[epoch])
-    print('total runtime:', str(round(time.time() - start, 2)))
+    show_prog(epoch, train_losses[epoch], val_losses[epoch], train_pos_acc[epoch],
+              train_neg_acc[epoch], val_pos_acc[epoch], val_neg_acc[epoch], (time.time() - start))
+    #print('Epoch', epoch+1, 'train avg loss:', train_losses[epoch], 'validation avg loss:', val_losses[epoch])
+    #print('Epoch', epoch+1, 'train pos acc: ', train_pos_acc[epoch], 'validation pos acc: ', val_pos_acc[epoch])
+    #print('Epoch', epoch+1, 'train neg acc: ', train_neg_acc[epoch], 'validation neg acc: ', val_neg_acc[epoch])
+    #print('total runtime:', str(round(time.time() - start, 2)))
 
-    np.save(save_path + model_name +'/train_losses', train_losses)
-    np.save(save_path + model_name +'/val_losses', val_losses)
-    np.save(save_path + model_name +'/train_pos_acc', train_pos_acc)
-    np.save(save_path + model_name +'/train_neg_acc', train_neg_acc)
-    np.save(save_path + model_name +'/val_pos_acc', val_pos_acc)
-    np.save(save_path + model_name +'/val_neg_acc', val_neg_acc)
+    if save:
+        np.save(save_path + model_name +'/train_losses', train_losses)
+        np.save(save_path + model_name +'/val_losses', val_losses)
+        np.save(save_path + model_name +'/train_pos_acc', train_pos_acc)
+        np.save(save_path + model_name +'/train_neg_acc', train_neg_acc)
+        np.save(save_path + model_name +'/val_pos_acc', val_pos_acc)
+        np.save(save_path + model_name +'/val_neg_acc', val_neg_acc)
 
-    if (epoch+1) % save_rate ==0: #save model dict
-       torch.save(model.state_dict(), save_path + model_name + '/model_epoch%s' % (epoch+1))
+        if (epoch+1) % save_rate ==0: #save model dict
+            torch.save(model.state_dict(), save_path + model_name + '/model_epoch%s' % (epoch+1))
+    else:
+        print('MODEL AND DATA ARE NOT BEING SAVED')
 
-#TODO: update this, shouldn't be hard coded
-plt.subplot(1,2,1)   
-plt.plot(train_losses, label='train')
-plt.plot(val_losses, label='val')
-plt.legend()
-plt.xlabel('Epoch')
-plt.ylabel('Weighted BCE Loss')
-plt.subplot(1,2,2)
-plt.plot(train_pos_acc, label='train_pos')
-plt.plot(train_neg_acc, label='train_neg')
-plt.plot(val_pos_acc, label='val_pos')
-plt.plot(val_neg_acc, label='val_neg')
-plt.legend()
-plt.xlabel('Epoch')
-plt.ylabel('Accuracy')
-plt.suptitle('LSTM model')
-plt.show()
+# PLOT GRAPHS
+plotter(model_name, train_losses, train_pos_acc, train_neg_acc,
+        val_losses, val_pos_acc, val_neg_acc, loss)
+
+
+''' TCN testing
+train_data = Dataset(partition['train'], data_path)
+train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+
+val_data = Dataset(partition['validation'], data_path)
+val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+model = TCN(40, 1, [60,20, 10], kernel_size=2, dropout=0.2)
+criterion = nn.BCEWithLogitsLoss(pos_weight=torch.DoubleTensor([50]).to(args.device))
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+
+for i in range(10):
+    loss_tracker = 0
+    for batch, labels, seq_len in train_loader:
+            labels = labels[:,-1].view(-1,1)
+            batch, labels = batch.to(args.device), labels.to(args.device)
+            out = model(batch.permute(0,2,1))
+            loss = criterion(out, labels)
+            loss.backward()
+            optimizer.step()
+            loss_tracker += loss
+    print(loss_tracker)
+exit()
+'''

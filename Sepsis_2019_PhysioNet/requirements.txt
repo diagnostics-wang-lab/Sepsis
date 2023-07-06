@@ -1,4 +1,4 @@
 ##Pytorch
 numpy==1.16.2
  #double check
-scipy==1.2.1
+scipy==1.10.0
